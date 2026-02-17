@@ -1,4 +1,4 @@
-const { 
+const {
   Client,
   GatewayIntentBits,
   REST,
@@ -7,31 +7,32 @@ const {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
-  ChannelType
+  ChannelType,
+  PermissionsBitField
 } = require("discord.js");
 
 const config = require("./config.json");
 const estoque = require("./estoque.json");
 
+// ===== VARIÁVEIS =====
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const GUILD_ID = process.env.GUILD_ID;
+
+// ===== BOT =====
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent
   ]
 });
 
-
-// ===== CONFIG =====
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID; // coloque no Railway
-const GUILD_ID = process.env.GUILD_ID;   // coloque no Railway
-
-
-// ===== SLASH COMMAND =====
+// ===== SLASH =====
 const commands = [
   new SlashCommandBuilder()
-    .setName("painel")
-    .setDescription("Criar painel da loja")
+    .setName("loja")
+    .setDescription("Abrir a loja")
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
@@ -47,39 +48,37 @@ const rest = new REST({ version: "10" }).setToken(TOKEN);
   } catch (err) {
     console.error(err);
   }
-})();
+});
 
-
-// ===== BOT ONLINE =====
+// ===== ONLINE =====
 client.once("ready", () => {
   console.log(`Bot online como ${client.user.tag}`);
 });
 
-
 // ===== INTERAÇÕES =====
 client.on("interactionCreate", async (interaction) => {
 
-  // COMANDO /painel
+  // ===== /LOJA =====
   if (interaction.isChatInputCommand()) {
 
-    if (interaction.commandName === "painel") {
+    if (interaction.commandName === "loja") {
 
       const botao = new ButtonBuilder()
-        .setCustomId("loja")
-        .setLabel("🛒 Loja")
+        .setCustomId("abrir_loja")
+        .setLabel("🛒 Abrir Loja")
         .setStyle(ButtonStyle.Primary);
 
       const row = new ActionRowBuilder().addComponents(botao);
 
       await interaction.reply({
-        content: "Clique para abrir a loja",
+        content: "Clique abaixo para comprar:",
         components: [row]
       });
     }
   }
 
-  // BOTÃO LOJA
-  if (interaction.isButton() && interaction.customId === "loja") {
+  // ===== ABRIR LOJA =====
+  if (interaction.isButton() && interaction.customId === "abrir_loja") {
 
     const canal = await interaction.guild.channels.create({
       name: `compra-${interaction.user.username}`,
@@ -88,11 +87,14 @@ client.on("interactionCreate", async (interaction) => {
       permissionOverwrites: [
         {
           id: interaction.guild.id,
-          deny: ["ViewChannel"]
+          deny: [PermissionsBitField.Flags.ViewChannel]
         },
         {
           id: interaction.user.id,
-          allow: ["ViewChannel", "SendMessages"]
+          allow: [
+            PermissionsBitField.Flags.ViewChannel,
+            PermissionsBitField.Flags.SendMessages
+          ]
         }
       ]
     });
@@ -105,14 +107,14 @@ client.on("interactionCreate", async (interaction) => {
     const row = new ActionRowBuilder().addComponents(holograma);
 
     canal.send({
-      content: `Olá ${interaction.user}, escolha o produto abaixo:`,
+      content: `Olá ${interaction.user}, escolha o produto:`,
       components: [row]
     });
 
     interaction.reply({ content: "Canal criado!", ephemeral: true });
   }
 
-  // PRODUTO
+  // ===== PRODUTO =====
   if (interaction.isButton() && interaction.customId === "holograma") {
 
     const confirmar = new ButtonBuilder()
@@ -123,21 +125,83 @@ client.on("interactionCreate", async (interaction) => {
     const row = new ActionRowBuilder().addComponents(confirmar);
 
     await interaction.reply({
-      content: `Envie o Pix para: **${config.pix}**`,
+      content: `💰 Envie o Pix para:\n**${config.pix}**\nDepois envie o comprovante.`,
       components: [row]
     });
   }
 
-  // ENTREGA
-  if (interaction.isButton() && interaction.customId === "confirmar") {
+  // ===== STAFF =====
+  if (interaction.isButton()) {
 
-    const link = estoque["HOLOGRAMA FF"];
+    if (interaction.customId.startsWith("aprovar")) {
 
-    await interaction.reply({
-      content: `✅ Pagamento aprovado!\n${link}`
-    });
+      if (!interaction.member.roles.cache.has(config.cargoStaff))
+        return interaction.reply({ content: "Sem permissão.", ephemeral: true });
+
+      const canalID = interaction.customId.split("_")[1];
+      const canal = interaction.guild.channels.cache.get(canalID);
+
+      const link = estoque["HOLOGRAMA FF"];
+
+      canal.send(`✅ Pagamento aprovado!\n${link}`);
+
+      interaction.reply({ content: "Venda aprovada!", ephemeral: true });
+    }
+
+    if (interaction.customId.startsWith("reprovar")) {
+
+      if (!interaction.member.roles.cache.has(config.cargoStaff))
+        return interaction.reply({ content: "Sem permissão.", ephemeral: true });
+
+      const canalID = interaction.customId.split("_")[1];
+      const canal = interaction.guild.channels.cache.get(canalID);
+
+      canal.send("❌ Comprovante inválido. Envie novamente.");
+
+      interaction.reply({ content: "Reprovado.", ephemeral: true });
+    }
+  }
+});
+
+
+// ===== COMPROVANTE =====
+client.on("messageCreate", async (msg) => {
+
+  if (!msg.channel.name.startsWith("compra-")) return;
+  if (msg.author.bot) return;
+
+  // Anti golpe: só imagem
+  if (msg.attachments.size === 0) {
+    return msg.reply("⚠️ Envie o comprovante em imagem.");
   }
 
+  const canalLogs = msg.guild.channels.cache.get(config.canalLogs);
+
+  const embed = {
+    title: "💰 Nova venda",
+    description: `Cliente: ${msg.author}\nCanal: ${msg.channel}`,
+    color: 0x00ff00
+  };
+
+  const aprovar = new ButtonBuilder()
+    .setCustomId(`aprovar_${msg.channel.id}`)
+    .setLabel("Aprovar")
+    .setStyle(ButtonStyle.Success);
+
+  const reprovar = new ButtonBuilder()
+    .setCustomId(`reprovar_${msg.channel.id}`)
+    .setLabel("Reprovar")
+    .setStyle(ButtonStyle.Danger);
+
+  const row = new ActionRowBuilder().addComponents(aprovar, reprovar);
+
+  canalLogs.send({
+    embeds: [embed],
+    files: [msg.attachments.first().url],
+    components: [row]
+  });
+
+  msg.reply("📷 Comprovante enviado para análise.");
 });
 
 client.login(TOKEN);
