@@ -141,4 +141,4 @@ client.on("messageCreate", async (msg) => {
 
 });
 
-client.login(config.token);
+client.login(process.env.TOKEN);
