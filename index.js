@@ -1,9 +1,13 @@
 const { 
-Client, GatewayIntentBits, 
-EmbedBuilder, ActionRowBuilder, 
-ButtonBuilder, ButtonStyle, 
-StringSelectMenuBuilder, 
-PermissionsBitField 
+  Client,
+  GatewayIntentBits,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ChannelType
 } = require("discord.js");
 
 const config = require("./config.json");
@@ -12,133 +16,128 @@ const estoque = require("./estoque.json");
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
+    GatewayIntentBits.GuildMessages
   ]
 });
 
+
+// ===== CONFIG =====
+const TOKEN = process.env.TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID; // coloque no Railway
+const GUILD_ID = process.env.GUILD_ID;   // coloque no Railway
+
+
+// ===== SLASH COMMAND =====
+const commands = [
+  new SlashCommandBuilder()
+    .setName("painel")
+    .setDescription("Criar painel da loja")
+].map(cmd => cmd.toJSON());
+
+const rest = new REST({ version: "10" }).setToken(TOKEN);
+
+(async () => {
+  try {
+    console.log("Registrando slash...");
+    await rest.put(
+      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
+      { body: commands }
+    );
+    console.log("Slash registrado!");
+  } catch (err) {
+    console.error(err);
+  }
+})();
+
+
+// ===== BOT ONLINE =====
 client.once("ready", () => {
-  console.log("Bot online!");
+  console.log(`Bot online como ${client.user.tag}`);
 });
 
+
+// ===== INTERAÇÕES =====
 client.on("interactionCreate", async (interaction) => {
+
+  // COMANDO /painel
+  if (interaction.isChatInputCommand()) {
+
+    if (interaction.commandName === "painel") {
+
+      const botao = new ButtonBuilder()
+        .setCustomId("loja")
+        .setLabel("🛒 Loja")
+        .setStyle(ButtonStyle.Primary);
+
+      const row = new ActionRowBuilder().addComponents(botao);
+
+      await interaction.reply({
+        content: "Clique para abrir a loja",
+        components: [row]
+      });
+    }
+  }
 
   // BOTÃO LOJA
   if (interaction.isButton() && interaction.customId === "loja") {
 
-    const menu = new StringSelectMenuBuilder()
-      .setCustomId("produto")
-      .setPlaceholder("Selecione o produto")
-      .addOptions([
-        {
-          label: "HOLOGRAMA FF",
-          description: "Preço: R$ 2,50",
-          value: "HOLOGRAMA FF"
-        }
-      ]);
-
-    const row = new ActionRowBuilder().addComponents(menu);
-
-    await interaction.reply({
-      content: "Escolha o produto:",
-      components: [row],
-      ephemeral: true
-    });
-  }
-
-  // ESCOLHER PRODUTO
-  if (interaction.isStringSelectMenu() && interaction.customId === "produto") {
-
     const canal = await interaction.guild.channels.create({
       name: `compra-${interaction.user.username}`,
+      type: ChannelType.GuildText,
       parent: config.categoriaTickets,
       permissionOverwrites: [
         {
           id: interaction.guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel]
+          deny: ["ViewChannel"]
         },
         {
           id: interaction.user.id,
-          allow: [PermissionsBitField.Flags.ViewChannel]
+          allow: ["ViewChannel", "SendMessages"]
         }
       ]
     });
 
-    const embed = new EmbedBuilder()
-      .setTitle("🛒 Compra - HOLOGRAMA FF")
-      .setDescription(
-        `Preço: R$ 2,50\n\n` +
-        `Envie o Pix para:\n**${config.pix}**\n\n` +
-        `Depois clique em confirmar pagamento.`
-      )
-      .setColor("Green");
+    const holograma = new ButtonBuilder()
+      .setCustomId("holograma")
+      .setLabel("HOLOGRAMA FF - R$2,50")
+      .setStyle(ButtonStyle.Success);
 
-    const confirmar = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("confirmar")
-        .setLabel("Confirmar Pagamento")
-        .setStyle(ButtonStyle.Success)
-    );
+    const row = new ActionRowBuilder().addComponents(holograma);
 
-    await canal.send({
-      content: interaction.user.toString(),
-      embeds: [embed],
-      components: [confirmar]
+    canal.send({
+      content: `Olá ${interaction.user}, escolha o produto abaixo:`,
+      components: [row]
     });
 
+    interaction.reply({ content: "Canal criado!", ephemeral: true });
+  }
+
+  // PRODUTO
+  if (interaction.isButton() && interaction.customId === "holograma") {
+
+    const confirmar = new ButtonBuilder()
+      .setCustomId("confirmar")
+      .setLabel("Confirmar pagamento")
+      .setStyle(ButtonStyle.Primary);
+
+    const row = new ActionRowBuilder().addComponents(confirmar);
+
     await interaction.reply({
-      content: `Seu canal foi criado: ${canal}`,
-      ephemeral: true
+      content: `Envie o Pix para: **${config.pix}**`,
+      components: [row]
     });
   }
 
-  // CONFIRMAR PAGAMENTO
+  // ENTREGA
   if (interaction.isButton() && interaction.customId === "confirmar") {
+
+    const link = estoque["HOLOGRAMA FF"];
+
     await interaction.reply({
-      content: "Envie o comprovante aqui no chat.",
-      ephemeral: true
+      content: `✅ Pagamento aprovado!\n${link}`
     });
   }
 
 });
 
-
-// ENTREGA AUTOMÁTICA (estoque infinito)
-client.on("messageCreate", async (msg) => {
-
-  if (!msg.channel.name.startsWith("compra-")) return;
-  if (msg.author.bot) return;
-
-  const produto = "HOLOGRAMA FF";
-  const link = estoque[produto];
-
-  await msg.reply(`✅ Pagamento aprovado!\n\nAqui está seu produto:\n${link}`);
-});
-
-
-// COMANDO PARA CRIAR PAINEL
-client.on("messageCreate", async (msg) => {
-
-  if (msg.content === "!painel") {
-
-    const embed = new EmbedBuilder()
-      .setTitle("🛒 Loja TK")
-      .setDescription("Clique abaixo para comprar o HOLOGRAMA FF")
-      .setColor("Blue");
-
-    const botao = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId("loja")
-        .setLabel("🛒 Loja")
-        .setStyle(ButtonStyle.Primary)
-    );
-
-    msg.channel.send({
-      embeds: [embed],
-      components: [botao]
-    });
-  }
-
-});
-
-client.login(process.env.TOKEN);
+client.login(TOKEN);
