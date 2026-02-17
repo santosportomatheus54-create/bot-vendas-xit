@@ -14,7 +14,7 @@ const {
 const config = require("./config.json");
 const estoque = require("./estoque.json");
 
-// ===== VARIÁVEIS =====
+// ===== VARIÁVEIS DO RAILWAY =====
 const TOKEN = process.env.TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
@@ -28,7 +28,7 @@ const client = new Client({
   ]
 });
 
-// ===== SLASH =====
+// ===== SLASH COMMAND =====
 const commands = [
   new SlashCommandBuilder()
     .setName("loja")
@@ -37,16 +37,22 @@ const commands = [
 
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
+// REGISTRAR SLASH
 (async () => {
   try {
-    console.log("Registrando slash...");
+    console.log("Registrando slash /loja...");
+    console.log("TOKEN:", TOKEN ? "OK" : "ERRO");
+    console.log("CLIENT_ID:", CLIENT_ID);
+    console.log("GUILD_ID:", GUILD_ID);
+
     await rest.put(
       Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
       { body: commands }
     );
-    console.log("Slash registrado!");
+
+    console.log("Slash /loja registrado com sucesso!");
   } catch (err) {
-    console.error(err);
+    console.error("Erro ao registrar Slash:", err);
   }
 });
 
@@ -71,7 +77,7 @@ client.on("interactionCreate", async (interaction) => {
       const row = new ActionRowBuilder().addComponents(botao);
 
       await interaction.reply({
-        content: "Clique abaixo para comprar:",
+        content: "Clique abaixo para abrir a loja:",
         components: [row]
       });
     }
@@ -106,12 +112,12 @@ client.on("interactionCreate", async (interaction) => {
 
     const row = new ActionRowBuilder().addComponents(holograma);
 
-    canal.send({
+    await canal.send({
       content: `Olá ${interaction.user}, escolha o produto:`,
       components: [row]
     });
 
-    interaction.reply({ content: "Canal criado!", ephemeral: true });
+    await interaction.reply({ content: "Canal criado!", ephemeral: true });
   }
 
   // ===== PRODUTO =====
@@ -145,7 +151,7 @@ client.on("interactionCreate", async (interaction) => {
 
       canal.send(`✅ Pagamento aprovado!\n${link}`);
 
-      interaction.reply({ content: "Venda aprovada!", ephemeral: true });
+      return interaction.reply({ content: "Venda aprovada!", ephemeral: true });
     }
 
     if (interaction.customId.startsWith("reprovar")) {
@@ -158,11 +164,10 @@ client.on("interactionCreate", async (interaction) => {
 
       canal.send("❌ Comprovante inválido. Envie novamente.");
 
-      interaction.reply({ content: "Reprovado.", ephemeral: true });
+      return interaction.reply({ content: "Reprovado.", ephemeral: true });
     }
   }
 });
-
 
 // ===== COMPROVANTE =====
 client.on("messageCreate", async (msg) => {
@@ -170,7 +175,6 @@ client.on("messageCreate", async (msg) => {
   if (!msg.channel.name.startsWith("compra-")) return;
   if (msg.author.bot) return;
 
-  // Anti golpe: só imagem
   if (msg.attachments.size === 0) {
     return msg.reply("⚠️ Envie o comprovante em imagem.");
   }
