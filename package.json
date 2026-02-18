@@ -1,7 +1,13 @@
 {
-  "name": "loja-bot",
+  "name": "tk-bot-vendas",
   "version": "1.0.0",
+  "description": "Bot vendas TK",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
-    "discord.js": "^14.14.1"
+    "discord.js": "^14.14.1",
+    "dotenv": "^16.4.5"
   }
 }
