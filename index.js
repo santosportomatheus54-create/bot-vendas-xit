@@ -1,211 +1,91 @@
-const {
-  Client,
-  GatewayIntentBits,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ChannelType,
-  PermissionsBitField
-} = require("discord.js");
+const { Client, GatewayIntentBits, EmbedBuilder } = require("discord.js");
+require("dotenv").config();
 
 const config = require("./config.json");
-const estoque = require("./estoque.json");
 
-// ===== VARIÁVEIS DO RAILWAY =====
-const TOKEN = process.env.TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID;
-const GUILD_ID = process.env.GUILD_ID;
-
-// ===== BOT =====
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
-// ===== SLASH COMMAND =====
-const commands = [
-  new SlashCommandBuilder()
-    .setName("loja")
-    .setDescription("Abrir a loja")
-].map(cmd => cmd.toJSON());
-
-const rest = new REST({ version: "10" }).setToken(TOKEN);
-
-// REGISTRAR SLASH
-(async () => {
-  try {
-    console.log("Registrando slash /loja...");
-    console.log("TOKEN:", TOKEN ? "OK" : "ERRO");
-    console.log("CLIENT_ID:", CLIENT_ID);
-    console.log("GUILD_ID:", GUILD_ID);
-
-    await rest.put(
-      Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-      { body: commands }
-    );
-
-    console.log("Slash /loja registrado com sucesso!");
-  } catch (err) {
-    console.error("Erro ao registrar Slash:", err);
-  }
-});
-
-// ===== ONLINE =====
 client.once("ready", () => {
-  console.log(`Bot online como ${client.user.tag}`);
+  console.log(`✅ Bot online como ${client.user.tag}`);
 });
 
-// ===== INTERAÇÕES =====
-client.on("interactionCreate", async (interaction) => {
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
 
-  // ===== /LOJA =====
-  if (interaction.isChatInputCommand()) {
+  const prefix = "!";
+  if (!message.content.startsWith(prefix)) return;
 
-    if (interaction.commandName === "loja") {
+  const args = message.content.slice(prefix.length).trim().split(/ +/);
+  const cmd = args.shift().toLowerCase();
 
-      const botao = new ButtonBuilder()
-        .setCustomId("abrir_loja")
-        .setLabel("🛒 Abrir Loja")
-        .setStyle(ButtonStyle.Primary);
+  // COMANDO LOJA
+  if (cmd === "loja") {
 
-      const row = new ActionRowBuilder().addComponents(botao);
+    const embed = new EmbedBuilder()
+      .setTitle("🛒 TK SCRIPTS STORE")
+      .setDescription("Escolha seu produto abaixo 👇")
+      .addFields({
+        name: "✨ Holograma",
+        value: "Preço: R$10\nDigite `!comprar holograma`"
+      })
+      .setColor("Pink");
 
-      await interaction.reply({
-        content: "Clique abaixo para abrir a loja:",
-        components: [row]
-      });
-    }
+    message.channel.send({ embeds: [embed] });
   }
 
-  // ===== ABRIR LOJA =====
-  if (interaction.isButton() && interaction.customId === "abrir_loja") {
+  // COMPRAR
+  if (cmd === "comprar") {
+    const produto = args[0];
 
-    const canal = await interaction.guild.channels.create({
-      name: `compra-${interaction.user.username}`,
-      type: ChannelType.GuildText,
-      parent: config.categoriaTickets,
-      permissionOverwrites: [
-        {
-          id: interaction.guild.id,
-          deny: [PermissionsBitField.Flags.ViewChannel]
-        },
-        {
-          id: interaction.user.id,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.SendMessages
-          ]
-        }
-      ]
-    });
-
-    const holograma = new ButtonBuilder()
-      .setCustomId("holograma")
-      .setLabel("HOLOGRAMA FF - R$2,50")
-      .setStyle(ButtonStyle.Success);
-
-    const row = new ActionRowBuilder().addComponents(holograma);
-
-    await canal.send({
-      content: `Olá ${interaction.user}, escolha o produto:`,
-      components: [row]
-    });
-
-    await interaction.reply({ content: "Canal criado!", ephemeral: true });
-  }
-
-  // ===== PRODUTO =====
-  if (interaction.isButton() && interaction.customId === "holograma") {
-
-    const confirmar = new ButtonBuilder()
-      .setCustomId("confirmar")
-      .setLabel("Confirmar pagamento")
-      .setStyle(ButtonStyle.Primary);
-
-    const row = new ActionRowBuilder().addComponents(confirmar);
-
-    await interaction.reply({
-      content: `💰 Envie o Pix para:\n**${config.pix}**\nDepois envie o comprovante.`,
-      components: [row]
-    });
-  }
-
-  // ===== STAFF =====
-  if (interaction.isButton()) {
-
-    if (interaction.customId.startsWith("aprovar")) {
-
-      if (!interaction.member.roles.cache.has(config.cargoStaff))
-        return interaction.reply({ content: "Sem permissão.", ephemeral: true });
-
-      const canalID = interaction.customId.split("_")[1];
-      const canal = interaction.guild.channels.cache.get(canalID);
-
-      const link = estoque["HOLOGRAMA FF"];
-
-      canal.send(`✅ Pagamento aprovado!\n${link}`);
-
-      return interaction.reply({ content: "Venda aprovada!", ephemeral: true });
+    if (produto !== "holograma") {
+      return message.reply("❌ Produto inválido.");
     }
 
-    if (interaction.customId.startsWith("reprovar")) {
-
-      if (!interaction.member.roles.cache.has(config.cargoStaff))
-        return interaction.reply({ content: "Sem permissão.", ephemeral: true });
-
-      const canalID = interaction.customId.split("_")[1];
-      const canal = interaction.guild.channels.cache.get(canalID);
-
-      canal.send("❌ Comprovante inválido. Envie novamente.");
-
-      return interaction.reply({ content: "Reprovado.", ephemeral: true });
+    // ANTI GOLPE (verifica se já está comprando)
+    if (config.comprasAtivas.includes(message.author.id)) {
+      return message.reply("⚠️ Você já tem uma compra ativa.");
     }
+
+    config.comprasAtivas.push(message.author.id);
+    require("fs").writeFileSync("./config.json", JSON.stringify(config, null, 2));
+
+    const embed = new EmbedBuilder()
+      .setTitle("💳 Pagamento")
+      .setDescription("Envie o comprovante no privado.")
+      .setColor("Pink");
+
+    message.author.send({ embeds: [embed] });
+
+    message.reply("📩 Te enviei mensagem no privado.");
   }
 });
 
-// ===== COMPROVANTE =====
-client.on("messageCreate", async (msg) => {
+// LOGS + ENTREGA
+client.on("messageCreate", async (message) => {
+  if (message.channel.type !== 1) return; // DM
+  if (message.author.bot) return;
 
-  if (!msg.channel.name.startsWith("compra-")) return;
-  if (msg.author.bot) return;
+  if (!config.comprasAtivas.includes(message.author.id)) return;
 
-  if (msg.attachments.size === 0) {
-    return msg.reply("⚠️ Envie o comprovante em imagem.");
-  }
+  const log = client.channels.cache.get(config.logs);
 
-  const canalLogs = msg.guild.channels.cache.get(config.canalLogs);
+  const embed = new EmbedBuilder()
+    .setTitle("🧾 Novo comprovante")
+    .setDescription(`Usuário: ${message.author}`)
+    .setColor("Pink");
 
-  const embed = {
-    title: "💰 Nova venda",
-    description: `Cliente: ${msg.author}\nCanal: ${msg.channel}`,
-    color: 0x00ff00
-  };
+  log.send({ embeds: [embed] });
 
-  const aprovar = new ButtonBuilder()
-    .setCustomId(`aprovar_${msg.channel.id}`)
-    .setLabel("Aprovar")
-    .setStyle(ButtonStyle.Success);
+  // ENTREGA AUTOMÁTICA
+  message.channel.send("✅ Pagamento recebido! Aqui está seu produto:");
 
-  const reprovar = new ButtonBuilder()
-    .setCustomId(`reprovar_${msg.channel.id}`)
-    .setLabel("Reprovar")
-    .setStyle(ButtonStyle.Danger);
+  message.channel.send(config.estoque.holograma);
 
-  const row = new ActionRowBuilder().addComponents(aprovar, reprovar);
-
-  canalLogs.send({
-    embeds: [embed],
-    files: [msg.attachments.first().url],
-    components: [row]
-  });
-
-  msg.reply("📷 Comprovante enviado para análise.");
+  // Remove da lista
+  config.comprasAtivas = config.comprasAtivas.filter(id => id !== message.author.id);
+  require("fs").writeFileSync("./config.json", JSON.stringify(config, null, 2));
 });
 
-client.login(TOKEN);
+client.login(process.env.TOKEN);
